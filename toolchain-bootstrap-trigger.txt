@@ -1,0 +1,2 @@
+BerryCalc Flutter/Android offline toolchain bootstrap trigger.
+Created for release candidate v3.2.2 validation.
