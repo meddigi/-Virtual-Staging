@@ -1,0 +1,152 @@
+name: BerryCalc Offline Flutter Toolchain Bootstrap
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/berrycalc-toolchain-bootstrap.yml"
+      - "toolchain-bootstrap-trigger.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  package-toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FLUTTER_VERSION: "3.44.8"
+      JAVA_VERSION: "17"
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "cmdline-tools;latest"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+          pub-cache: true
+
+      - name: Warm BerryCalc dependency and Android build caches
+        shell: bash
+        run: |
+          set -euxo pipefail
+          flutter --version
+          flutter create --platforms=android --org com.meddigi --project-name berrycalc bootstrap_project
+          cat > bootstrap_project/pubspec.yaml <<'YAML'
+          name: berrycalc
+          description: BerryCalc offline toolchain cache warmer
+          publish_to: none
+          version: 3.2.2+322
+          environment:
+            sdk: ">=3.10.0 <4.0.0"
+            flutter: ">=3.44.0 <4.0.0"
+          dependencies:
+            flutter:
+              sdk: flutter
+            flutter_localizations:
+              sdk: flutter
+            google_mobile_ads: ^9.0.0
+            http: ^1.6.0
+            in_app_purchase: ^3.3.0
+            package_info_plus: ^10.2.1
+            shared_preferences: ^2.5.5
+            url_launcher: ^6.3.2
+            audioplayers: ^6.8.1
+            path_provider: ^2.1.6
+            share_plus: ^13.3.0
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: ^6.0.0
+            flutter_launcher_icons: ^0.14.4
+            flutter_native_splash: ^2.4.8
+          flutter:
+            uses-material-design: true
+          YAML
+          cd bootstrap_project
+          flutter pub get
+          flutter analyze
+          flutter test
+          flutter build apk --debug
+
+      - name: Assemble minimal offline toolchain archives
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out/android-sdk
+          FLUTTER_ROOT="$(cd "$(dirname "$(command -v flutter)")/.." && pwd -P)"
+          cp -a "$ANDROID_SDK_ROOT/platform-tools" out/android-sdk/
+          mkdir -p out/android-sdk/platforms out/android-sdk/build-tools out/android-sdk/cmdline-tools
+          cp -a "$ANDROID_SDK_ROOT/platforms/android-36" out/android-sdk/platforms/
+          cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" out/android-sdk/build-tools/
+          cp -a "$ANDROID_SDK_ROOT/cmdline-tools/latest" out/android-sdk/cmdline-tools/
+          cp -a "$ANDROID_SDK_ROOT/licenses" out/android-sdk/
+          if [ -d "$ANDROID_SDK_ROOT/tools" ]; then cp -a "$ANDROID_SDK_ROOT/tools" out/android-sdk/; fi
+          tar --zstd -cf out/flutter-sdk.tar.zst -C "$(dirname "$FLUTTER_ROOT")" "$(basename "$FLUTTER_ROOT")"
+          tar --zstd -cf out/android-sdk.tar.zst -C out android-sdk
+          tar --zstd -cf out/flutter-build-caches.tar.zst -C "$HOME" .pub-cache .gradle .android
+          tar --zstd -cf out/jdk17.tar.zst -C "$(dirname "$JAVA_HOME")" "$(basename "$JAVA_HOME")"
+          {
+            echo "flutter_root_basename=$(basename "$FLUTTER_ROOT")"
+            echo "java_home_basename=$(basename "$JAVA_HOME")"
+            echo "flutter_version=$(flutter --version | head -1)"
+            echo "android_sdk_packages:"
+            find out/android-sdk -maxdepth 3 -mindepth 1 -type d | sort
+            echo "sha256:"
+            sha256sum out/*.tar.zst
+            echo "sizes:"
+            du -h out/*.tar.zst
+          } | tee out/TOOLCHAIN_MANIFEST.txt
+
+      - name: Upload Flutter SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-flutter-sdk-${{ github.run_number }}
+          path: out/flutter-sdk.tar.zst
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload Android SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-android-sdk-${{ github.run_number }}
+          path: out/android-sdk.tar.zst
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload Flutter and Gradle caches
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-build-caches-${{ github.run_number }}
+          path: out/flutter-build-caches.tar.zst
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload JDK 17 and manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-jdk-manifest-${{ github.run_number }}
+          path: |
+            out/jdk17.tar.zst
+            out/TOOLCHAIN_MANIFEST.txt
+          compression-level: 0
+          retention-days: 1
