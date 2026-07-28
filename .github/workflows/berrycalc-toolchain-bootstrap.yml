@@ -13,10 +13,11 @@ permissions:
 jobs:
   package-toolchain:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     env:
       FLUTTER_VERSION: "3.44.8"
       JAVA_VERSION: "17"
+      PART_SIZE: "300M"
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -88,56 +89,45 @@ jobs:
           flutter test
           flutter build apk --debug
 
-      - name: Assemble minimal offline toolchain archives
+      - name: Assemble and split offline toolchain archives
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p out/android-sdk
+          mkdir -p out/android-sdk out/flutter-parts out/cache-parts
           FLUTTER_ROOT="$(cd "$(dirname "$(command -v flutter)")/.." && pwd -P)"
+          JDK_ROOT="$(readlink -f "$JAVA_HOME")"
           cp -a "$ANDROID_SDK_ROOT/platform-tools" out/android-sdk/
           mkdir -p out/android-sdk/platforms out/android-sdk/build-tools out/android-sdk/cmdline-tools
           cp -a "$ANDROID_SDK_ROOT/platforms/android-36" out/android-sdk/platforms/
           cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" out/android-sdk/build-tools/
           cp -a "$ANDROID_SDK_ROOT/cmdline-tools/latest" out/android-sdk/cmdline-tools/
           cp -a "$ANDROID_SDK_ROOT/licenses" out/android-sdk/
-          if [ -d "$ANDROID_SDK_ROOT/tools" ]; then cp -a "$ANDROID_SDK_ROOT/tools" out/android-sdk/; fi
           tar --zstd -cf out/flutter-sdk.tar.zst -C "$(dirname "$FLUTTER_ROOT")" "$(basename "$FLUTTER_ROOT")"
           tar --zstd -cf out/android-sdk.tar.zst -C out android-sdk
           tar --zstd -cf out/flutter-build-caches.tar.zst -C "$HOME" .pub-cache .gradle .android
-          tar --zstd -cf out/jdk17.tar.zst -C "$(dirname "$JAVA_HOME")" "$(basename "$JAVA_HOME")"
+          tar --zstd -cf out/jdk17.tar.zst -C "$(dirname "$JDK_ROOT")" "$(basename "$JDK_ROOT")"
+          split -b "$PART_SIZE" -d -a 2 out/flutter-sdk.tar.zst out/flutter-parts/flutter-sdk.part-
+          split -b "$PART_SIZE" -d -a 2 out/flutter-build-caches.tar.zst out/cache-parts/build-caches.part-
           {
             echo "flutter_root_basename=$(basename "$FLUTTER_ROOT")"
-            echo "java_home_basename=$(basename "$JAVA_HOME")"
+            echo "java_home_basename=$(basename "$JDK_ROOT")"
             echo "flutter_version=$(flutter --version | head -1)"
             echo "android_sdk_packages:"
             find out/android-sdk -maxdepth 3 -mindepth 1 -type d | sort
-            echo "sha256:"
-            sha256sum out/*.tar.zst
+            echo "archive_sha256:"
+            sha256sum out/flutter-sdk.tar.zst out/android-sdk.tar.zst out/flutter-build-caches.tar.zst out/jdk17.tar.zst
+            echo "part_sha256:"
+            sha256sum out/flutter-parts/* out/cache-parts/*
             echo "sizes:"
-            du -h out/*.tar.zst
+            du -h out/*.tar.zst out/flutter-parts/* out/cache-parts/*
           } | tee out/TOOLCHAIN_MANIFEST.txt
-
-      - name: Upload Flutter SDK
-        uses: actions/upload-artifact@v4
-        with:
-          name: berrycalc-flutter-sdk-${{ github.run_number }}
-          path: out/flutter-sdk.tar.zst
-          compression-level: 0
-          retention-days: 1
+          rm out/flutter-sdk.tar.zst out/flutter-build-caches.tar.zst
 
       - name: Upload Android SDK
         uses: actions/upload-artifact@v4
         with:
           name: berrycalc-android-sdk-${{ github.run_number }}
           path: out/android-sdk.tar.zst
-          compression-level: 0
-          retention-days: 1
-
-      - name: Upload Flutter and Gradle caches
-        uses: actions/upload-artifact@v4
-        with:
-          name: berrycalc-build-caches-${{ github.run_number }}
-          path: out/flutter-build-caches.tar.zst
           compression-level: 0
           retention-days: 1
 
@@ -149,4 +139,150 @@ jobs:
             out/jdk17.tar.zst
             out/TOOLCHAIN_MANIFEST.txt
           compression-level: 0
+          retention-days: 1
+
+      - name: Upload Flutter part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-flutter-part-00-${{ github.run_number }}
+          path: out/flutter-parts/flutter-sdk.part-00
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload Flutter part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-flutter-part-01-${{ github.run_number }}
+          path: out/flutter-parts/flutter-sdk.part-01
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload Flutter part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-flutter-part-02-${{ github.run_number }}
+          path: out/flutter-parts/flutter-sdk.part-02
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload Flutter part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-flutter-part-03-${{ github.run_number }}
+          path: out/flutter-parts/flutter-sdk.part-03
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload Flutter part 04
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-flutter-part-04-${{ github.run_number }}
+          path: out/flutter-parts/flutter-sdk.part-04
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload Flutter part 05
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-flutter-part-05-${{ github.run_number }}
+          path: out/flutter-parts/flutter-sdk.part-05
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload Flutter part 06
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-flutter-part-06-${{ github.run_number }}
+          path: out/flutter-parts/flutter-sdk.part-06
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload Flutter part 07
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-flutter-part-07-${{ github.run_number }}
+          path: out/flutter-parts/flutter-sdk.part-07
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload cache part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-cache-part-00-${{ github.run_number }}
+          path: out/cache-parts/build-caches.part-00
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload cache part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-cache-part-01-${{ github.run_number }}
+          path: out/cache-parts/build-caches.part-01
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload cache part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-cache-part-02-${{ github.run_number }}
+          path: out/cache-parts/build-caches.part-02
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload cache part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-cache-part-03-${{ github.run_number }}
+          path: out/cache-parts/build-caches.part-03
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload cache part 04
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-cache-part-04-${{ github.run_number }}
+          path: out/cache-parts/build-caches.part-04
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload cache part 05
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-cache-part-05-${{ github.run_number }}
+          path: out/cache-parts/build-caches.part-05
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload cache part 06
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-cache-part-06-${{ github.run_number }}
+          path: out/cache-parts/build-caches.part-06
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload cache part 07
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-cache-part-07-${{ github.run_number }}
+          path: out/cache-parts/build-caches.part-07
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload cache part 08
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-cache-part-08-${{ github.run_number }}
+          path: out/cache-parts/build-caches.part-08
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload cache part 09
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-cache-part-09-${{ github.run_number }}
+          path: out/cache-parts/build-caches.part-09
+          compression-level: 0
+          if-no-files-found: ignore
           retention-days: 1
