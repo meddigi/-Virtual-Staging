@@ -1,0 +1,53 @@
+name: BerryCalc Android NDK Bootstrap
+
+on:
+  pull_request:
+    paths:
+      - "ndk-bootstrap-trigger.txt"
+      - ".github/workflows/berrycalc-ndk-bootstrap.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package-ndk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+      - name: Install and package NDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "ndk;28.2.13676358"
+          mkdir -p out/parts
+          tar --zstd -cf out/android-ndk-28.2.13676358.tar.zst -C "$ANDROID_SDK_ROOT/ndk" 28.2.13676358
+          split -b 300M -d -a 2 out/android-ndk-28.2.13676358.tar.zst out/parts/android-ndk.part-
+          sha256sum out/android-ndk-28.2.13676358.tar.zst out/parts/* | tee out/NDK_MANIFEST.txt
+      - name: Upload NDK part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-ndk-part-00-${{ github.run_number }}
+          path: out/parts/android-ndk.part-00
+          compression-level: 0
+          retention-days: 1
+      - name: Upload NDK part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-ndk-part-01-${{ github.run_number }}
+          path: out/parts/android-ndk.part-01
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload NDK part 02 and manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-ndk-tail-manifest-${{ github.run_number }}
+          path: |
+            out/parts/android-ndk.part-02
+            out/NDK_MANIFEST.txt
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
