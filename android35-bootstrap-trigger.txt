@@ -1,0 +1,1 @@
+BerryCalc Android 35 platform bootstrap trigger for v3.2.2 release candidate.
