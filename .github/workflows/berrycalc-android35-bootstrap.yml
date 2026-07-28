@@ -1,0 +1,37 @@
+name: BerryCalc Android 35 Bootstrap
+
+on:
+  pull_request:
+    paths:
+      - "android35-bootstrap-trigger.txt"
+      - ".github/workflows/berrycalc-android35-bootstrap.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package-android35:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+      - name: Install and package Android 35
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          mkdir -p out/android35/platforms out/android35/build-tools
+          cp -a "$ANDROID_SDK_ROOT/platforms/android-35" out/android35/platforms/
+          cp -a "$ANDROID_SDK_ROOT/build-tools/35.0.0" out/android35/build-tools/
+          tar --zstd -cf out/android35.tar.zst -C out android35
+          sha256sum out/android35.tar.zst | tee out/ANDROID35_MANIFEST.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: berrycalc-android35-${{ github.run_number }}
+          path: |
+            out/android35.tar.zst
+            out/ANDROID35_MANIFEST.txt
+          compression-level: 0
+          retention-days: 1
